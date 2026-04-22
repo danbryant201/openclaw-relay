@@ -1,10 +1,8 @@
 {
-  "name": "relay",
+  "name": "shared",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test:e2ee": "node ../test-e2ee.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -12,8 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "ws": "^8.20.0",
-    "@azure/storage-blob": "^12.17.0",
-    "@azure/identity": "^4.0.1"
+    "@noble/curves": "^2.2.0"
   }
 }

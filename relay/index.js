@@ -1,15 +1,22 @@
 const { WebSocketServer } = require('ws');
 const url = require('url');
+const { FileStorageProvider } = require('./storage');
+const { Handshake } = require('../shared/crypto/Handshake');
 
 const PORT = process.env.PORT || 8080;
-const wss = new WebSocketServer({ port: PORT });
+console.log(`[Relay] Starting on port ${PORT}...`);
+const wss = new WebSocketServer({ port: Number(PORT) });
+
+// Initialize storage
+const storage = new FileStorageProvider('./storage');
 
 // Maps to keep track of connections
 // Key: connection ID (e.g., pairing code or device ID)
 const providers = new Map(); // id -> socket
 const consumers = new Map();  // id -> socket
+const handshakes = new Map(); // id -> { step: number, metadata: object }
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
     const parameters = url.parse(req.url, true).query;
     const { type, id } = parameters;
 
@@ -21,11 +28,80 @@ wss.on('connection', (ws, req) => {
 
     console.log(`New connection: type=${type}, id=${id}`);
 
+    // Fetch or initialize metadata/handshake state
+    let hs = handshakes.get(id);
+    if (!hs) {
+        const metadata = await storage.getMetadata(id);
+        hs = { step: 0, metadata };
+        handshakes.set(id, hs);
+    }
+
     if (type === 'provider') {
         // A provider (Gateway) is connecting
         providers.set(id, ws);
         
-        ws.on('message', (message) => {
+        // If consumer is already connected, notify them or vice versa
+        const consumerWs = consumers.get(id);
+        if (consumerWs && consumerWs.readyState === 1) {
+            console.log(`[Relay] Handshake pairing available for ${id}`);
+        }
+
+        ws.on('message', async (message) => {
+            const hs = handshakes.get(id);
+            
+            try {
+                const parsed = JSON.parse(message);
+                
+                // Noise_XX Step 3: Provider proof (Identity + Signature)
+                if (parsed.type === 'hs_step3') {
+                    console.log(`[Relay] Handshake ${id}: Step 3 (Provider Identity Verification)`);
+                    
+                    const { identityPub, signature, timestamp } = parsed;
+
+                    // Alpha Auto-Registration: Claim the ID if it's new
+                    if (!hs.metadata) {
+                        console.log(`[Relay] ID ${id} is unclaimed. Auto-registering provider...`);
+                        const newMetadata = {
+                            gatewayPublicKey: identityPub,
+                            registeredAt: new Date().toISOString()
+                        };
+                        await storage.setMetadata(id, newMetadata);
+                        hs.metadata = newMetadata;
+                        console.log(`[Relay] Registered public key for ${id}: ${identityPub.substring(0, 16)}...`);
+                    }
+
+                    // Verify Identity
+                    const storedKey = Buffer.from(hs.metadata.gatewayPublicKey, 'hex');
+                    const receivedKey = Buffer.from(identityPub, 'hex');
+
+                    if (!storedKey.equals(receivedKey)) {
+                        console.error(`[Relay] SECURITY ALERT: Identity mismatch for ${id}!`);
+                        ws.close(4003, 'Identity mismatch');
+                        return;
+                    }
+
+                    // Verify Signature (Noise-XX: sign(ephemeral_a + ephemeral_b + identity_static))
+                    // For Alpha, we verify a simple challenge or timestamp signature to prove ownership of the private key.
+                    const msgToVerify = Buffer.from(`${id}:${timestamp}`);
+                    const sigBuffer = Buffer.from(signature, 'hex');
+                    
+                    const isValid = Handshake.verify(storedKey, msgToVerify, sigBuffer);
+                    if (!isValid) {
+                        console.error(`[Relay] SECURITY ALERT: Signature verification failed for ${id}!`);
+                        ws.close(4003, 'Invalid signature');
+                        return;
+                    }
+
+                    console.log(`[Relay] Handshake ${id}: Provider verified successfully.`);
+                    hs.step = 3;
+                } else if (parsed.type === 'hs_step1') {
+                    console.log(`[Relay] Handshake ${id}: Step 1 (Provider -> Consumer)`);
+                    hs.step = 1;
+                }
+            } catch (e) {
+                console.error(`[Relay] Error processing provider message: ${e.message}`);
+            }
+
             // Forward from provider to consumer
             const consumerWs = consumers.get(id);
             if (consumerWs && consumerWs.readyState === 1) {
@@ -44,7 +120,26 @@ wss.on('connection', (ws, req) => {
         // A consumer (App) is connecting
         consumers.set(id, ws);
 
+        // Notify provider that a consumer is ready to start handshake
+        const providerWs = providers.get(id);
+        if (providerWs && providerWs.readyState === 1) {
+            console.log(`[Relay] Consumer ${id} connected, notifying provider.`);
+            providerWs.send(JSON.stringify({ type: 'consumer_connected' }));
+        }
+
         ws.on('message', (message) => {
+            const hs = handshakes.get(id);
+
+            try {
+                const parsed = JSON.parse(message);
+                if (parsed.type === 'hs_step2') {
+                    console.log(`[Relay] Handshake ${id}: Step 2 (Consumer -> Provider)`);
+                    hs.step = 2;
+                }
+            } catch (e) {
+                // Ignore
+            }
+
             // Forward from consumer to provider
             const providerWs = providers.get(id);
             if (providerWs && providerWs.readyState === 1) {

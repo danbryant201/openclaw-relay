@@ -23,4 +23,29 @@ The server matches the `id` and forwards messages bi-directionally between the c
    node index.js
    ```
 
-Default port is 8080. You can set the `PORT` environment variable to override it.
+## Docker
+
+You can build and run the relay server using Docker.
+
+### Building the Image
+
+From the repository root (not the `relay/` directory), run:
+
+```bash
+docker build -t openclaw-relay -f relay/Dockerfile .
+```
+
+### Running the Container
+
+```bash
+docker run -p 8080:8080 openclaw-relay
+```
+
+To run it in the background:
+
+```bash
+docker run -d -p 8080:8080 --name relay openclaw-relay
+```
+
+The relay will then be available at `ws://localhost:8080`.
+

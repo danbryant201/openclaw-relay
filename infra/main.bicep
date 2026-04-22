@@ -1,0 +1,126 @@
+@description('The location for all resources.')
+param location string = resourceGroup().location
+
+@description('The name of the Container App Environment.')
+param containerAppEnvName string = 'cae-relay-${uniqueString(resourceGroup().id)}'
+
+@description('The name of the Container App.')
+param containerAppName string = 'ca-relay-${uniqueString(resourceGroup().id)}'
+
+@description('The name of the Storage Account.')
+param storageAccountName string = 'strelay${uniqueString(resourceGroup().id)}'
+
+@description('The name of the User Assigned Identity.')
+param managedIdentityName string = 'id-relay-${uniqueString(resourceGroup().id)}'
+
+@description('The image to use for the Container App.')
+param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('The port the container is listening on.')
+param targetPort int = 8080
+
+// Storage Account
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: storageAccountName
+  location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    accessTier: 'Hot'
+    allowBlobPublicAccess: false
+  }
+}
+
+// Blob Container
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  name: 'metadata'
+}
+
+// User Assigned Managed Identity
+resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-01' = {
+  name: managedIdentityName
+  location: location
+}
+
+// Role Assignment: Storage Blob Data Contributor
+// Definition ID for Storage Blob Data Contributor: ba92f5b4-2d11-453d-a403-e96b0029c9fe
+resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, managedIdentity.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  scope: storageAccount
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Container Apps Environment (Consumption Plan)
+resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
+  name: containerAppEnvName
+  location: location
+  sku: {
+    name: 'Consumption'
+  }
+  properties: {}
+}
+
+// Container App
+resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
+  name: containerAppName
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: containerAppEnv.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: targetPort
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'relay'
+          image: containerImage
+          env: [
+            {
+              name: 'PORT'
+              value: string(targetPort)
+            }
+            {
+              name: 'STORAGE_ACCOUNT_NAME'
+              value: storageAccountName
+            }
+            {
+              name: 'BLOB_CONTAINER_NAME'
+              value: 'metadata'
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: managedIdentity.properties.clientId
+            }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
+      ]
+    }
+  }
+}
+
+output fqdn string = containerApp.properties.configuration.ingress.fqdn
