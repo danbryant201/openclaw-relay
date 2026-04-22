@@ -1,0 +1,16 @@
+{
+  "name": "bridge",
+  "version": "1.0.0",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Local bridge for openclaw-relay",
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}
