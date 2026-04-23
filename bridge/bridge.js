@@ -28,7 +28,6 @@ console.log(`[Bridge] Memory Agent active for: ${WORKSPACE_PATH}`);
 // Load or generate identity
 if (fs.existsSync(IDENTITY_FILE)) {
     myIdentity = JSON.parse(fs.readFileSync(IDENTITY_FILE, 'utf8'));
-    // Convert hex back to Buffer
     myIdentity.publicKey = Buffer.from(myIdentity.publicKey, 'hex');
     myIdentity.privateKey = Buffer.from(myIdentity.privateKey, 'hex');
     console.log('[Bridge] Loaded identity:', Buffer.from(myIdentity.publicKey).toString('hex').substring(0, 16));
@@ -41,9 +40,6 @@ if (fs.existsSync(IDENTITY_FILE)) {
     }, null, 2));
 }
 
-/**
- * Normal connection mode
- */
 function connect(pairingId = null) {
     const id = pairingId || GATEWAY_ID;
     const url = `${RELAY_BASE}?type=provider&id=${id}`;
@@ -53,9 +49,6 @@ function connect(pairingId = null) {
     setupWs(ws, id);
 }
 
-/**
- * Pairing mode
- */
 function pair(code) {
     const url = `${RELAY_BASE}?type=provider&id=${code}&action=join_pairing`;
     console.log(`[Bridge] Attempting to pair with code: ${code}...`);
@@ -77,7 +70,6 @@ function setupWs(socket, id, isPairing = false) {
         try {
             message = JSON.parse(data.toString());
         } catch (e) {
-            console.log(`[Bridge] Received non-JSON: ${data.toString()}`);
             return;
         }
 
@@ -89,6 +81,7 @@ function setupWs(socket, id, isPairing = false) {
                 socket.close();
                 connect(message.pairingId);
                 break;
+                
             case 'consumer_connected':
                 console.log('[Bridge] Consumer connected, initiating handshake step 1...');
                 myEphemeral = Handshake.generateKeyPair();
@@ -104,13 +97,9 @@ function setupWs(socket, id, isPairing = false) {
                 sharedSecret = Handshake.deriveSharedSecret(myEphemeral.privateKey, consumerPub);
                 console.log(`[Bridge] Shared secret derived: ${Buffer.from(sharedSecret).toString('hex').substring(0, 8)}...`);
                 
-                // Noise-XX Step 3: Identity + Signature Proof
                 const timestamp = Date.now();
-                const currentId = id; // use the id passed into setupWs
-                const msgToSign = Buffer.from(`${currentId}:${timestamp}`);
+                const msgToSign = Buffer.from(`${id}:${timestamp}`);
                 const signature = Handshake.sign(myIdentity.privateKey, msgToSign);
-
-                // We still send the proof for the consumer
                 const proof = Handshake.encrypt(sharedSecret, Buffer.from('BRIDGE_READY'));
                 
                 ws.send(JSON.stringify({
@@ -125,7 +114,10 @@ function setupWs(socket, id, isPairing = false) {
                 break;
 
             case 'encrypted_message':
-                console.log('[Bridge] Received encrypted message. Decrypting...');
+                if (!sharedSecret) {
+                    console.log('[Bridge] Received encrypted message before handshake completion.');
+                    return;
+                }
                 try {
                     const decrypted = Handshake.decrypt(
                         sharedSecret,
@@ -135,12 +127,17 @@ function setupWs(socket, id, isPairing = false) {
                     );
                     
                     const payload = JSON.parse(decrypted.toString());
-                    console.log(`[Bridge] Decrypted memory request: ${payload.action}`);
+                    console.log(`[Bridge] Handled request: ${payload.action}`);
 
-                    // Handle Memory Requests
-                    const result = await memoryAgent.handleRequest(payload);
+                    // Logic for Logs, Memory, etc.
+                    let result = { type: 'error', message: 'Not implemented' };
                     
-                    // Encrypt Response
+                    if (payload.action === 'start_logs') {
+                        result = { type: 'log_entry', message: 'Bridge log stream started.', level: 'info' };
+                    } else {
+                        result = await memoryAgent.handleRequest(payload);
+                    }
+                    
                     const encryptedResponse = Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(result)));
                     ws.send(JSON.stringify({
                         type: 'encrypted_message',
@@ -150,12 +147,9 @@ function setupWs(socket, id, isPairing = false) {
                     }));
 
                 } catch (e) {
-                    console.error('[Bridge] Decryption or Memory Handling failed!', e.message);
+                    console.error('[Bridge] Processing failed!', e.message);
                 }
                 break;
-
-            default:
-                console.log(`[Bridge] Unhandled message type: ${message.type}`);
         }
     });
 
@@ -179,7 +173,6 @@ function scheduleReconnect() {
     }
 }
 
-// Start the bridge
 const args = process.argv.slice(2);
 if (args[0] === '--pair' && args[1]) {
     pair(args[1]);
@@ -187,9 +180,7 @@ if (args[0] === '--pair' && args[1]) {
     connect();
 }
 
-// Handle process termination
 process.on('SIGINT', () => {
-    console.log('[Bridge] Shutting down...');
     if (ws) ws.close();
     process.exit();
 });
