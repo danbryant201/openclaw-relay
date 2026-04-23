@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const { Handshake } = require('../shared/crypto/Handshake.js');
 const fs = require('fs');
 const path = require('path');
+const MemoryAgent = require('./memory-agent.js');
 
 /**
  * OpenClaw Relay Bridge (Alpha)
@@ -9,6 +10,7 @@ const path = require('path');
 
 const RELAY_BASE = process.env.RELAY_URL || 'wss://ca-relay-uogm7gtzixdzo.ashyocean-9489ea26.ukwest.azurecontainerapps.io';
 const GATEWAY_ID = process.env.GATEWAY_ID || 'dan-nucbox';
+const WORKSPACE_PATH = process.env.WORKSPACE_PATH || path.resolve(__dirname, '../../');
 const RECONNECT_INTERVAL = 5000;
 const IDENTITY_FILE = path.resolve(__dirname, './identity.json');
 
@@ -17,6 +19,11 @@ let reconnectTimer;
 let myEphemeral;
 let sharedSecret;
 let myIdentity;
+let memoryAgent;
+
+// Initialize Memory Agent
+memoryAgent = new MemoryAgent(null, WORKSPACE_PATH);
+console.log(`[Bridge] Memory Agent active for: ${WORKSPACE_PATH}`);
 
 // Load or generate identity
 if (fs.existsSync(IDENTITY_FILE)) {
@@ -65,7 +72,7 @@ function setupWs(socket, id, isPairing = false) {
         }
     });
 
-    socket.on('message', (data) => {
+    socket.on('message', async (data) => {
         let message;
         try {
             message = JSON.parse(data.toString());
@@ -126,9 +133,24 @@ function setupWs(socket, id, isPairing = false) {
                         Buffer.from(message.tag, 'hex'),
                         Buffer.from(message.ciphertext, 'hex')
                     );
-                    console.log(`[Bridge] Decrypted content: "${decrypted.toString()}"`);
+                    
+                    const payload = JSON.parse(decrypted.toString());
+                    console.log(`[Bridge] Decrypted memory request: ${payload.action}`);
+
+                    // Handle Memory Requests
+                    const result = await memoryAgent.handleRequest(payload);
+                    
+                    // Encrypt Response
+                    const encryptedResponse = Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(result)));
+                    ws.send(JSON.stringify({
+                        type: 'encrypted_message',
+                        ciphertext: encryptedResponse.ciphertext.toString('hex'),
+                        iv: encryptedResponse.iv.toString('hex'),
+                        tag: encryptedResponse.tag.toString('hex')
+                    }));
+
                 } catch (e) {
-                    console.error('[Bridge] Decryption failed!', e.message);
+                    console.error('[Bridge] Decryption or Memory Handling failed!', e.message);
                 }
                 break;
 

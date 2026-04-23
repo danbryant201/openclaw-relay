@@ -1,40 +1,43 @@
-# OpenClaw Relay: Production Management
+# PROD.md
 
-Your Relay is now live in Azure!
+## Production Relay Status
+- **Relay URL:** `wss://ca-relay-uogm7gtzixdzo.ashyocean-9489ea26.ukwest.azurecontainerapps.io`
+- **Region:** `ukwest`
+- **GitHub:** `https://github.com/danbryant201/openclaw-relay.git`
 
-## Infrastructure Details
-- **Resource Group:** `OpenClawRelay`
-- **Location:** `ukwest`
-- **Relay URL (WebSocket):** `wss://ca-relay-uogm7gtzixdzo.ashyocean-9489ea26.ukwest.azurecontainerapps.io`
-- **Storage Account:** `strelayuogm7gtzixdzo` (Used for gateway metadata/keys)
-- **Container Registry:** `ocrelayreg.azurecr.io`
+## Architecture Overview
+The OpenClaw Global Relay acts as a signaling and E2EE bridge between your browser (Cockpit) and your local OpenClaw gateway (Bridge).
 
-## How to Update the Relay
-If you make changes to the code in `/relay` or `/shared`:
+### 1. Security (E2EE)
+- **Handshake:** Noise_XX (Diffie-Hellman Ephemeral)
+- **Encryption:** AES-256-GCM
+- **Identity:** Ed25519 signatures
+- **Trust:** The Relay never sees plaintext; it only routes opaque encrypted blobs.
 
-1.  **Build and Push the new image:**
-    ```powershell
-    # Run from the root of the openclaw-relay repo
-    az acr build --registry ocrelayreg --image relay:latest --file Dockerfile.relay .
-    ```
-2.  **Restart the Container App:**
-    The app will automatically pull the new `latest` image on its next restart, or you can force it:
-    ```powershell
-    az containerapp revision restart --resource-group OpenClawRelay --name ca-relay-uogm7gtzixdzo --revision $(az containerapp revision list --resource-group OpenClawRelay --name ca-relay-uogm7gtzixdzo --query "[0].name" -o tsv)
-    ```
+### 2. Components
+- **Bridge:** Runs locally on your machine (NucBox/Pi). Initiates an outbound WebSocket to the Relay.
+- **Cockpit (Dashboard):** Next.js PWA. Connects to Relay and performs handshake with the Bridge.
+- **Relay:** Node.js server on Azure Container Apps. Manages stateless signaling and Azure Blob storage for metadata.
 
-## Monitoring
-- **View Logs:**
-  ```powershell
-  az containerapp logs show --resource-group OpenClawRelay --name ca-relay-uogm7gtzixdzo --follow
-  ```
-- **Check Status:**
-  ```powershell
-  az containerapp show --resource-group OpenClawRelay --name ca-relay-uogm7gtzixdzo --query properties.provisioningState
-  ```
+## Management Commands
 
-## Cleanup (Caution!)
-To delete the entire cloud environment:
-```powershell
-az group delete --name OpenClawRelay --yes
+### Deploy Infrastructure (Azure)
+```bash
+az deployment group create --resource-group rg-openclaw --template-file infra/main.bicep
 ```
+
+### Build & Push Container
+```bash
+az acr build --registry acropenclaw --image relay:latest ./relay
+```
+
+### Run Local Bridge
+```bash
+cd bridge
+export RELAY_URL=wss://...
+node bridge.js
+```
+
+## Maintenance Logs
+- **2026-04-23:** Completed Phase 3 (The Cockpit). Implemented live Memory Editor, real-time Logs, and automated Pairing UI.
+- **2026-04-23:** Stateless storage integrated via Azure Blob Storage.

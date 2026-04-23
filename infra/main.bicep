@@ -19,6 +19,9 @@ param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('The port the container is listening on.')
 param targetPort int = 8080
 
+@description('The name of the Static Web App.')
+param staticWebAppName string = 'swa-frontend-${uniqueString(resourceGroup().id)}'
+
 // Storage Account
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
@@ -51,7 +54,6 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
 }
 
 // Role Assignment: Storage Blob Data Contributor
-// Definition ID for Storage Blob Data Contributor: ba92f5b4-2d11-453d-a403-e96b0029c9fe
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, managedIdentity.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
   scope: storageAccount
@@ -62,7 +64,7 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-// Container Apps Environment (Consumption Plan)
+// Container Apps Environment
 resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerAppEnvName
   location: location
@@ -72,7 +74,7 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
 @description('The login server for the Azure Container Registry.')
 param acrLoginServer string = ''
 
-// Definition ID for AcrPull: 7f951dda-4ed3-4680-a7ca-43fe172d538d
+// AcrPull role assignment
 resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(acrLoginServer)) {
   name: guid(resourceGroup().id, managedIdentity.id, 'acrPull')
   scope: resourceGroup() 
@@ -141,4 +143,17 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   }
 }
 
-output fqdn string = containerApp.properties.configuration.ingress.fqdn
+// Static Web App
+resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
+  name: staticWebAppName
+  location: 'westeurope'
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {}
+}
+
+output relayFqdn string = containerApp.properties.configuration.ingress.fqdn
+output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
+output staticWebAppName string = staticWebApp.name

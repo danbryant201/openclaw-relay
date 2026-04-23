@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Shield, Lock, Zap, Cpu, ArrowRight, Download, Terminal, MessageSquare, Globe, ChevronRight } from 'lucide-react';
 
 export default function LandingPage() {
@@ -20,10 +21,10 @@ export default function LandingPage() {
             <a href="https://docs.openclaw.ai" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Docs</a>
           </div>
 
-          <button className="px-5 py-2.5 bg-white text-slate-950 rounded-full text-sm font-bold hover:bg-indigo-50 transition-all flex items-center gap-2 shadow-xl shadow-white/5">
-            Get Started
+          <a href="/dashboard" className="px-5 py-2.5 bg-white text-slate-950 rounded-full text-sm font-bold hover:bg-indigo-50 transition-all flex items-center gap-2 shadow-xl shadow-white/5">
+            Launch Cockpit
             <ArrowRight className="w-4 h-4" />
-          </button>
+          </a>
         </div>
       </nav>
 
@@ -49,10 +50,10 @@ export default function LandingPage() {
               OpenClaw Global Relay creates a secure, end-to-end encrypted bridge to your private local gateway. No port forwarding, no complex VPNs, just pure AI power from any browser.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              <button className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-500 transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-500/30">
+              <a href="/dashboard" className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-500 transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-500/30">
                 Launch Dashboard
                 <Globe className="w-5 h-5" />
-              </button>
+              </a>
               <button className="w-full sm:w-auto px-8 py-4 bg-slate-900 border border-slate-800 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-3">
                 <Download className="w-5 h-5" />
                 Download Bridge
