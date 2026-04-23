@@ -1,5 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { BlobServiceClient } = require('@azure/storage-blob');
+const { DefaultAzureCredential } = require('@azure/identity');
 
 /**
  * Abstract StorageProvider interface
@@ -46,26 +48,57 @@ class FileStorageProvider extends StorageProvider {
 }
 
 /**
- * Azure Blob Storage Provider (Skeleton)
+ * Azure Blob Storage Provider
+ * Uses Managed Identity for Zero-Credentials Auth
  */
 class AzureBlobStorageProvider extends StorageProvider {
-  constructor(connectionString, containerName = 'openclaw-relay') {
+  constructor(accountName, containerName = 'metadata') {
     super();
-    // Implementation placeholder for @azure/storage-blob
-    console.warn('[Relay] AzureBlobStorageProvider is a skeleton. Requires @azure/storage-blob and @azure/identity.');
-    this.connectionString = connectionString;
+    this.accountName = accountName;
     this.containerName = containerName;
+    
+    const blobServiceUrl = `https://${accountName}.blob.core.windows.net`;
+    const credential = new DefaultAzureCredential();
+    
+    this.blobServiceClient = new BlobServiceClient(blobServiceUrl, credential);
+    this.containerClient = this.blobServiceClient.getContainerClient(containerName);
   }
 
   async getMetadata(id) {
-    // TODO: Implement BlobClient.downloadToBuffer() logic
-    console.log(`[AzureStorage] Fetching metadata for ${id}...`);
-    return null; 
+    const blobName = `${id}.json`;
+    const blobClient = this.containerClient.getBlobClient(blobName);
+    
+    try {
+      const downloadResponse = await blobClient.download();
+      const downloaded = await this.streamToBuffer(downloadResponse.readableStreamBody);
+      return JSON.parse(downloaded.toString());
+    } catch (e) {
+      if (e.details?.errorCode === 'BlobNotFound') return null;
+      console.error(`[AzureStorage] Error fetching ${id}:`, e.message);
+      return null;
+    }
   }
 
   async setMetadata(id, metadata) {
-    // TODO: Implement BlockBlobClient.upload() logic
-    console.log(`[AzureStorage] Saving metadata for ${id}...`);
+    const blobName = `${id}.json`;
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
+    const data = JSON.stringify(metadata, null, 2);
+    
+    try {
+      await blockBlobClient.upload(data, data.length);
+      console.log(`[AzureStorage] Saved metadata for ${id}.`);
+    } catch (e) {
+      console.error(`[AzureStorage] Error saving ${id}:`, e.message);
+    }
+  }
+
+  async streamToBuffer(readableStream) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      readableStream.on('data', (data) => chunks.push(data instanceof Buffer ? data : Buffer.from(data)));
+      readableStream.on('end', () => resolve(Buffer.concat(chunks)));
+      readableStream.on('error', reject);
+    });
   }
 }
 

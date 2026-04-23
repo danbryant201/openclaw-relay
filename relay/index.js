@@ -1,16 +1,22 @@
 const { WebSocketServer } = require('ws');
 const url = require('url');
-const { FileStorageProvider } = require('./storage');
+const { FileStorageProvider, AzureBlobStorageProvider } = require('./storage');
 const { Handshake } = require('../shared/crypto/Handshake');
+const { PairingManager } = require('./pairing');
 
 const PORT = process.env.PORT || 8080;
 console.log(`[Relay] Starting on port ${PORT}...`);
 const wss = new WebSocketServer({ port: Number(PORT) });
 
-const { PairingManager } = require('./pairing');
-
-// Initialize storage
-const storage = new FileStorageProvider('./storage');
+// Initialize storage based on environment
+let storage;
+if (process.env.STORAGE_ACCOUNT_NAME) {
+    console.log(`[Relay] Using Azure Blob Storage: ${process.env.STORAGE_ACCOUNT_NAME}`);
+    storage = new AzureBlobStorageProvider(process.env.STORAGE_ACCOUNT_NAME, process.env.BLOB_CONTAINER_NAME || 'metadata');
+} else {
+    console.log('[Relay] Using Local File Storage (Development)');
+    storage = new FileStorageProvider('./storage');
+}
 
 // Maps to keep track of connections
 const providers = new Map(); // id -> socket
@@ -133,8 +139,7 @@ wss.on('connection', async (ws, req) => {
                         return;
                     }
 
-                    // Verify Signature (Noise-XX: sign(ephemeral_a + ephemeral_b + identity_static))
-                    // For Alpha, we verify a simple challenge or timestamp signature to prove ownership of the private key.
+                    // Verify Signature
                     const msgToVerify = Buffer.from(`${id}:${timestamp}`);
                     const sigBuffer = Buffer.from(signature, 'hex');
                     
@@ -211,4 +216,4 @@ wss.on('connection', async (ws, req) => {
     }
 });
 
-console.log(`Relay server Alpha running on ws://localhost:${PORT}`);
+console.log(`Relay server Alpha running on PORT ${PORT}`);
