@@ -7,18 +7,71 @@ const PORT = process.env.PORT || 8080;
 console.log(`[Relay] Starting on port ${PORT}...`);
 const wss = new WebSocketServer({ port: Number(PORT) });
 
+const { PairingManager } = require('./pairing');
+
 // Initialize storage
 const storage = new FileStorageProvider('./storage');
 
 // Maps to keep track of connections
-// Key: connection ID (e.g., pairing code or device ID)
 const providers = new Map(); // id -> socket
 const consumers = new Map();  // id -> socket
 const handshakes = new Map(); // id -> { step: number, metadata: object }
+const activePairings = new Map(); // pairingCode -> { pairingId, consumerWs, createdAt }
 
 wss.on('connection', async (ws, req) => {
     const parameters = url.parse(req.url, true).query;
-    const { type, id } = parameters;
+    const { type, id, action } = parameters;
+
+    // Handle Pairing Initiation (Consumer side)
+    if (type === 'consumer' && action === 'init_pairing') {
+        const pairing = PairingManager.initiatePairing();
+        activePairings.set(pairing.pairingCode, {
+            pairingId: pairing.pairingId,
+            consumerWs: ws,
+            createdAt: Date.now()
+        });
+        
+        console.log(`[Relay] Pairing initiated. Code: ${pairing.pairingCode}`);
+        ws.send(JSON.stringify({ 
+            type: 'pairing_initiated', 
+            pairingCode: pairing.pairingCode,
+            pairingId: pairing.pairingId
+        }));
+        
+        ws.on('close', () => activePairings.delete(pairing.pairingCode));
+        return;
+    }
+
+    // Handle Pairing Join (Gateway/Provider side)
+    if (type === 'provider' && action === 'join_pairing') {
+        const code = id; // In join mode, 'id' is the code entered by user
+        const pairing = activePairings.get(code);
+
+        if (!pairing) {
+            console.log(`[Relay] Invalid pairing code attempt: ${code}`);
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid pairing code' }));
+            ws.close(4004, 'Invalid pairing code');
+            return;
+        }
+
+        console.log(`[Relay] Gateway joined pairing for code ${code}`);
+        
+        // Link them via the pairingId
+        const pId = pairing.pairingId;
+        providers.set(pId, ws);
+        consumers.set(pId, pairing.consumerWs);
+        
+        // Notify both sides to start Noise_XX handshake
+        ws.send(JSON.stringify({ type: 'pairing_joined', pairingId: pId }));
+        pairing.consumerWs.send(JSON.stringify({ type: 'gateway_ready', pairingId: pId }));
+        
+        // Store temp handshake info
+        handshakes.set(pId, { step: 0, metadata: null });
+
+        // Cleanup the short-lived code
+        activePairings.delete(code);
+        return;
+    }
 
     if (!type || !id) {
         console.log('Missing type or id in URL');

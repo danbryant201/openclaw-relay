@@ -7,7 +7,8 @@ const path = require('path');
  * OpenClaw Relay Bridge (Alpha)
  */
 
-const RELAY_URL = process.env.RELAY_URL || 'ws://localhost:8080?type=provider&id=dan-nucbox';
+const RELAY_BASE = process.env.RELAY_URL || 'wss://ca-relay-uogm7gtzixdzo.lemonriver-442d0bd1.ukwest.azurecontainerapps.io';
+const GATEWAY_ID = process.env.GATEWAY_ID || 'dan-nucbox';
 const RECONNECT_INTERVAL = 5000;
 const IDENTITY_FILE = path.resolve(__dirname, './identity.json');
 
@@ -33,12 +34,30 @@ if (fs.existsSync(IDENTITY_FILE)) {
     }, null, 2));
 }
 
-function connect() {
-    console.log(`[Bridge] Connecting to relay at ${RELAY_URL}...`);
+/**
+ * Normal connection mode
+ */
+function connect(pairingId = null) {
+    const id = pairingId || GATEWAY_ID;
+    const url = `${RELAY_BASE}?type=provider&id=${id}`;
     
-    ws = new WebSocket(RELAY_URL);
+    console.log(`[Bridge] Connecting to relay at ${url}...`);
+    ws = new WebSocket(url);
+    setupWs(ws, id);
+}
 
-    ws.on('open', () => {
+/**
+ * Pairing mode
+ */
+function pair(code) {
+    const url = `${RELAY_BASE}?type=provider&id=${code}&action=join_pairing`;
+    console.log(`[Bridge] Attempting to pair with code: ${code}...`);
+    ws = new WebSocket(url);
+    setupWs(ws, code, true);
+}
+
+function setupWs(socket, id, isPairing = false) {
+    socket.on('open', () => {
         console.log('[Bridge] Connected to relay.');
         if (reconnectTimer) {
             clearInterval(reconnectTimer);
@@ -46,7 +65,7 @@ function connect() {
         }
     });
 
-    ws.on('message', (data) => {
+    socket.on('message', (data) => {
         let message;
         try {
             message = JSON.parse(data.toString());
@@ -58,6 +77,11 @@ function connect() {
         console.log(`[Bridge] Received type: ${message.type}`);
 
         switch (message.type) {
+            case 'pairing_joined':
+                console.log(`[Bridge] Pairing successful! Swapping to tunnel ID: ${message.pairingId}`);
+                socket.close();
+                connect(message.pairingId);
+                break;
             case 'consumer_connected':
                 console.log('[Bridge] Consumer connected, initiating handshake step 1...');
                 myEphemeral = Handshake.generateKeyPair();
@@ -75,8 +99,8 @@ function connect() {
                 
                 // Noise-XX Step 3: Identity + Signature Proof
                 const timestamp = Date.now();
-                const id = new URL(RELAY_URL).searchParams.get('id');
-                const msgToSign = Buffer.from(`${id}:${timestamp}`);
+                const currentId = id; // use the id passed into setupWs
+                const msgToSign = Buffer.from(`${currentId}:${timestamp}`);
                 const signature = Handshake.sign(myIdentity.privateKey, msgToSign);
 
                 // We still send the proof for the consumer
@@ -134,7 +158,12 @@ function scheduleReconnect() {
 }
 
 // Start the bridge
-connect();
+const args = process.argv.slice(2);
+if (args[0] === '--pair' && args[1]) {
+    pair(args[1]);
+} else {
+    connect();
+}
 
 // Handle process termination
 process.on('SIGINT', () => {

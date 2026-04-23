@@ -1,7 +1,7 @@
-node_modules
-.git
-relay/storage.json
-relay/identity.json
-bridge/identity.json
-*.log
-.env
+dashboard/
+landing-page/
+bridge/
+.git/
+node_modules/
+**/node_modules/
+.next/

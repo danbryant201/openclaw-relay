@@ -45,7 +45,7 @@ resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@20
 }
 
 // User Assigned Managed Identity
-resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-01' = {
+resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
   location: location
 }
@@ -66,10 +66,21 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerAppEnvName
   location: location
-  sku: {
-    name: 'Consumption'
-  }
   properties: {}
+}
+
+@description('The login server for the Azure Container Registry.')
+param acrLoginServer string = ''
+
+// Definition ID for AcrPull: 7f951dda-4ed3-4680-a7ca-43fe172d538d
+resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(acrLoginServer)) {
+  name: guid(resourceGroup().id, managedIdentity.id, 'acrPull')
+  scope: resourceGroup() 
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    principalType: 'ServicePrincipal'
+  }
 }
 
 // Container App
@@ -85,10 +96,17 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   properties: {
     managedEnvironmentId: containerAppEnv.id
     configuration: {
+      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: targetPort
       }
+      registries: !empty(acrLoginServer) ? [
+        {
+          server: acrLoginServer
+          identity: managedIdentity.id
+        }
+      ] : null
     }
     template: {
       containers: [
