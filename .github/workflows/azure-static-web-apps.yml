@@ -33,9 +33,8 @@ jobs:
 
       - name: Merge Builds
         run: |
-          mkdir deploy
-          cp -r landing-page/out/* deploy/
           mkdir -p deploy/dashboard
+          cp -r landing-page/out/* deploy/
           cp -r dashboard/out/* deploy/dashboard/
 
       - name: Deploy to Azure Static Web Apps
@@ -48,3 +47,4 @@ jobs:
           output_location: ""
           skip_app_build: true
           skip_api_build: true
+          production_branch: "main"
