@@ -7,7 +7,7 @@ const path = require('path');
  * OpenClaw Relay Bridge (Alpha)
  */
 
-const RELAY_BASE = process.env.RELAY_URL || 'wss://ca-relay-uogm7gtzixdzo.lemonriver-442d0bd1.ukwest.azurecontainerapps.io';
+const RELAY_BASE = process.env.RELAY_URL || 'wss://ca-relay-uogm7gtzixdzo.ashyocean-9489ea26.ukwest.azurecontainerapps.io';
 const GATEWAY_ID = process.env.GATEWAY_ID || 'dan-nucbox';
 const RECONNECT_INTERVAL = 5000;
 const IDENTITY_FILE = path.resolve(__dirname, './identity.json');

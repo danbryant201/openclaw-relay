@@ -173,7 +173,7 @@ export default function Dashboard() {
 
                 <div className="bg-white p-3 rounded-2xl inline-block shadow-inner">
                   <QRCodeSVG 
-                    value={`openclaw:pair?code=${pairingCode.replace(' ', '')}&relay=ca-relay-uogm7gtzixdzo.lemonriver-442d0bd1.ukwest.azurecontainerapps.io`}
+                    value={`openclaw:pair?code=${pairingCode.replace(' ', '')}&relay=ca-relay-uogm7gtzixdzo.ashyocean-9489ea26.ukwest.azurecontainerapps.io`}
                     size={160}
                     level={"H"}
                     includeMargin={false}
