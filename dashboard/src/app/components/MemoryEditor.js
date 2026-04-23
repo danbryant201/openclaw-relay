@@ -28,7 +28,6 @@ export default function MemoryEditor() {
     switch (lastMsg.type) {
       case 'memory_structure':
         setStructure(lastMsg.data);
-        // Auto-select MEMORY.md if it exists and nothing is selected
         if (!selectedFile) {
           const hasMemoryMd = lastMsg.data.some(f => f.name === 'MEMORY.md');
           if (hasMemoryMd) setSelectedFile('MEMORY.md');
@@ -133,7 +132,6 @@ export default function MemoryEditor() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Editor */}
         <div className="flex-1 border-r border-slate-800 p-0 overflow-hidden flex flex-col relative">
            {isLoading && (
              <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] z-10 flex items-center justify-center">
@@ -152,7 +150,6 @@ export default function MemoryEditor() {
           />
         </div>
 
-        {/* Sidebar */}
         <div className="w-80 bg-slate-900/20 p-6 space-y-6 overflow-y-auto">
           <div>
             <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-4">Workspace Structure</h3>

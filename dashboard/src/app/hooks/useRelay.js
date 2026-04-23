@@ -1,12 +1,58 @@
+'use client';
+
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Handshake } from '@shared/crypto/Handshake.js';
+import { x25519 } from '@noble/curves/ed25519.js';
+
+const Handshake = {
+  generateKeyPair: () => {
+    const privateKey = window.crypto.getRandomValues(new Uint8Array(32));
+    const publicKey = x25519.getPublicKey(privateKey);
+    return { publicKey, privateKey };
+  },
+
+  deriveSharedSecret: (privateKey, publicKey) => {
+    return x25519.getSharedSecret(privateKey, publicKey);
+  },
+
+  encrypt: async (key, payload) => {
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'raw', key, 'AES-GCM', false, ['encrypt']
+    );
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, cryptoKey, payload
+    );
+    const fullBuffer = new Uint8Array(encrypted);
+    const ciphertext = fullBuffer.slice(0, -16);
+    const tag = fullBuffer.slice(-16);
+    return { 
+      ciphertext: Buffer.from(ciphertext), 
+      iv: Buffer.from(iv), 
+      tag: Buffer.from(tag) 
+    };
+  },
+
+  decrypt: async (key, iv, tag, ciphertext) => {
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'raw', key, 'AES-GCM', false, ['decrypt']
+    );
+    const fullCiphertext = new Uint8Array(ciphertext.length + tag.length);
+    fullCiphertext.set(new Uint8Array(ciphertext), 0);
+    fullCiphertext.set(new Uint8Array(tag), ciphertext.length);
+    
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv }, cryptoKey, fullCiphertext
+    );
+    return Buffer.from(decrypted);
+  }
+};
 
 export function useRelay() {
   const [status, setStatus] = useState('disconnected');
   const [gateways, setGateways] = useState([]);
   const [lastError, setLastError] = useState(null);
   const [sharedSecret, setSharedSecret] = useState(null);
-  const [messages, setMessages] = useState([]); // Decrypted inbox
+  const [messages, setMessages] = useState([]); 
   const ws = useRef(null);
   const ephemeral = useRef(null);
 
@@ -29,7 +75,7 @@ export function useRelay() {
         ws.current.send(JSON.stringify({ type: 'identify', role: 'dashboard' }));
       };
 
-      ws.current.onmessage = (event) => {
+      ws.current.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
           
@@ -39,7 +85,6 @@ export function useRelay() {
               break;
 
             case 'provider_connected':
-              // Start Handshake Step 1
               ephemeral.current = Handshake.generateKeyPair();
               ws.current.send(JSON.stringify({
                 type: 'hs_step1',
@@ -48,7 +93,6 @@ export function useRelay() {
               break;
 
             case 'hs_step2':
-              // Bridge responded with its ephemeral pub
               const bridgePub = Buffer.from(data.pub, 'hex');
               const secret = Handshake.deriveSharedSecret(ephemeral.current.privateKey, bridgePub);
               setSharedSecret(secret);
@@ -57,13 +101,11 @@ export function useRelay() {
 
             case 'encrypted_message':
               if (!sharedSecret) {
-                  // Fallback: If we get an encrypted message before secret is set, 
-                  // it might be a race condition or plain relay message
                   setMessages(prev => [...prev, data]);
                   return;
               }
               try {
-                const decrypted = Handshake.decrypt(
+                const decrypted = await Handshake.decrypt(
                     sharedSecret,
                     Buffer.from(data.iv, 'hex'),
                     Buffer.from(data.tag, 'hex'),
@@ -72,12 +114,10 @@ export function useRelay() {
                 const payload = JSON.parse(decrypted.toString());
                 setMessages(prev => [...prev, payload]);
               } catch (e) {
-                  // If decryption fails, it might be a plaintext message from the relay
                   setMessages(prev => [...prev, data]);
               }
               break;
             
-            // Handle plain relay messages
             case 'pairing_code_generated':
             case 'pairing_complete':
               setMessages(prev => [...prev, data]);
@@ -104,10 +144,10 @@ export function useRelay() {
     }
   }, [sharedSecret]);
 
-  const sendEncrypted = useCallback((payload) => {
+  const sendEncrypted = useCallback(async (payload) => {
     if (!ws.current || !sharedSecret) return;
     
-    const encrypted = Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(payload)));
+    const encrypted = await Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(payload)));
     ws.current.send(JSON.stringify({
       type: 'encrypted_message',
       ciphertext: encrypted.ciphertext.toString('hex'),
