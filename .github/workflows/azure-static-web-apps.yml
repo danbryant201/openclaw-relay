@@ -46,3 +46,5 @@ jobs:
           action: "upload"
           app_location: "deploy"
           output_location: ""
+          skip_app_build: true
+          skip_api_build: true
