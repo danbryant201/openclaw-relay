@@ -1,173 +1,88 @@
-'use client';
+const { x25519, ed25519 } = require('@noble/curves/ed25519.js');
+const { randomBytes, createCipheriv, createDecipheriv, createVerify, createSign } = require('node:crypto');
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import * as ed25519 from '@noble/curves/ed25519';
-
-const Handshake = {
-  generateKeyPair: () => {
-    const privateKey = crypto.getRandomValues(new Uint8Array(32));
-    const publicKey = ed25519.x25519.getPublicKey(privateKey);
+/**
+ * Handshake class implementing basic E2EE primitives for a Noise-like handshake.
+ */
+class Handshake {
+  /**
+   * Generates a new X25519 keypair.
+   * @returns {Object} { publicKey, privateKey } as Uint8Array
+   */
+  static generateKeyPair() {
+    const privateKey = randomBytes(32);
+    const publicKey = x25519.getPublicKey(privateKey);
     return { publicKey, privateKey };
-  },
-
-  deriveSharedSecret: (privateKey, publicKey) => {
-    return ed25519.x25519.getSharedSecret(privateKey, publicKey);
-  },
-
-  encrypt: async (key, payload) => {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw', key, 'AES-GCM', false, ['encrypt']
-    );
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv }, cryptoKey, payload
-    );
-    const fullBuffer = new Uint8Array(encrypted);
-    const ciphertext = fullBuffer.slice(0, -16);
-    const tag = fullBuffer.slice(-16);
-    return { 
-      ciphertext: Buffer.from(ciphertext), 
-      iv: Buffer.from(iv), 
-      tag: Buffer.from(tag) 
-    };
-  },
-
-  decrypt: async (key, iv, tag, ciphertext) => {
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw', key, 'AES-GCM', false, ['decrypt']
-    );
-    const fullCiphertext = new Uint8Array(ciphertext.length + tag.length);
-    fullCiphertext.set(new Uint8Array(ciphertext), 0);
-    fullCiphertext.set(new Uint8Array(tag), ciphertext.length);
-    
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv }, cryptoKey, fullCiphertext
-    );
-    return Buffer.from(decrypted);
   }
-};
 
-export function useRelay() {
-  const [status, setStatus] = useState('disconnected');
-  const [gateways, setGateways] = useState([]);
-  const [lastError, setLastError] = useState(null);
-  const [sharedSecret, setSharedSecret] = useState(null);
-  const [messages, setMessages] = useState([]); 
-  const ws = useRef(null);
-  const ephemeral = useRef(null);
+  /**
+   * Generates a new Ed25519 identity keypair.
+   * @returns {Object} { publicKey, privateKey } as Uint8Array
+   */
+  static generateIdentityKeyPair() {
+    const privateKey = randomBytes(32);
+    const publicKey = ed25519.getPublicKey(privateKey);
+    return { publicKey, privateKey };
+  }
 
-  const connect = useCallback(() => {
-    const url = process.env.NEXT_PUBLIC_RELAY_URL;
-    if (!url) {
-      setLastError('Relay URL not configured');
-      setStatus('error');
-      return;
-    }
+  /**
+   * Performs Diffie-Hellman exchange.
+   * @param {Uint8Array} privateKey Your private key
+   * @param {Uint8Array} publicKey Their public key
+   * @returns {Uint8Array} Shared secret
+   */
+  static deriveSharedSecret(privateKey, publicKey) {
+    return x25519.getSharedSecret(privateKey, publicKey);
+  }
 
-    setStatus('connecting');
-    
-    try {
-      ws.current = new WebSocket(url);
+  /**
+   * Signs a message using Ed25519.
+   * @param {Uint8Array} privateKey Ed25519 private key
+   * @param {Uint8Array} message Message to sign
+   * @returns {Uint8Array} Signature
+   */
+  static sign(privateKey, message) {
+    return ed25519.sign(message, privateKey);
+  }
 
-      ws.current.onopen = () => {
-        setStatus('connected');
-        setLastError(null);
-        ws.current.send(JSON.stringify({ type: 'identify', role: 'dashboard' }));
-      };
+  /**
+   * Verifies an Ed25519 signature.
+   * @param {Uint8Array} publicKey Ed25519 public key
+   * @param {Uint8Array} message Message that was signed
+   * @param {Uint8Array} signature Signature to verify
+   * @returns {boolean}
+   */
+  static verify(publicKey, message, signature) {
+    return ed25519.verify(signature, message, publicKey);
+  }
 
-      ws.current.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          switch (data.type) {
-            case 'registry_update':
-              setGateways(data.gateways || []);
-              break;
+  /**
+   * Encrypts a payload using AES-256-GCM.
+   * @param {Buffer|Uint8Array} key 32-byte key
+   * @param {Buffer|Uint8Array} payload Data to encrypt
+   * @returns {Object} { ciphertext, iv, tag }
+   */
+  static encrypt(key, payload) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const ciphertext = Buffer.concat([cipher.update(payload), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return { ciphertext, iv, tag };
+  }
 
-            case 'provider_connected':
-              ephemeral.current = Handshake.generateKeyPair();
-              ws.current.send(JSON.stringify({
-                type: 'hs_step1',
-                pub: Buffer.from(ephemeral.current.publicKey).toString('hex')
-              }));
-              break;
-
-            case 'hs_step2':
-              const bridgePub = Buffer.from(data.pub, 'hex');
-              const secret = Handshake.deriveSharedSecret(ephemeral.current.privateKey, bridgePub);
-              setSharedSecret(secret);
-              console.log('[Dashboard] E2EE Handshake Complete');
-              break;
-
-            case 'encrypted_message':
-              if (!sharedSecret) {
-                  setMessages(prev => [...prev, data]);
-                  return;
-              }
-              try {
-                const decrypted = await Handshake.decrypt(
-                    sharedSecret,
-                    Buffer.from(data.iv, 'hex'),
-                    Buffer.from(data.tag, 'hex'),
-                    Buffer.from(data.ciphertext, 'hex')
-                );
-                const payload = JSON.parse(decrypted.toString());
-                setMessages(prev => [...prev, payload]);
-              } catch (e) {
-                  setMessages(prev => [...prev, data]);
-              }
-              break;
-            
-            case 'pairing_code_generated':
-            case 'pairing_complete':
-              setMessages(prev => [...prev, data]);
-              break;
-          }
-        } catch (e) {
-          console.error('Failed to parse relay message', e);
-        }
-      };
-
-      ws.current.onclose = () => {
-        setStatus('disconnected');
-        setSharedSecret(null);
-        setTimeout(connect, 5000);
-      };
-
-      ws.current.onerror = () => {
-        setLastError('WebSocket error occurred');
-        setStatus('error');
-      };
-    } catch (e) {
-      setLastError(e.message);
-      setStatus('error');
-    }
-  }, [sharedSecret]);
-
-  const sendEncrypted = useCallback(async (payload) => {
-    if (!ws.current || !sharedSecret) return;
-    
-    const encrypted = await Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(payload)));
-    ws.current.send(JSON.stringify({
-      type: 'encrypted_message',
-      ciphertext: encrypted.ciphertext.toString('hex'),
-      iv: encrypted.iv.toString('hex'),
-      tag: encrypted.tag.toString('hex')
-    }));
-  }, [sharedSecret]);
-
-  const send = useCallback((payload) => {
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify(payload));
-      }
-  }, []);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      if (ws.current) ws.current.close();
-    };
-  }, [connect]);
-
-  return { status, gateways, lastError, sharedSecret, messages, sendEncrypted, send };
+  /**
+   * Decrypts a payload using AES-256-GCM.
+   * @param {Buffer|Uint8Array} key 32-byte key
+   * @param {Buffer|Uint8Array} iv 12-byte IV
+   * @param {Buffer|Uint8Array} tag 16-byte Auth Tag
+   * @param {Buffer|Uint8Array} ciphertext Encrypted data
+   * @returns {Buffer} Decrypted payload
+   */
+  static decrypt(key, iv, tag, ciphertext) {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  }
 }
+
+module.exports = { Handshake };
