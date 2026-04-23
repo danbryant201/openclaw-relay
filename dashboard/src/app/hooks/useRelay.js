@@ -1,7 +1,5 @@
-'use client';
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Handshake } from '../../../../shared/crypto/Handshake.js';
+import { Handshake } from '../../../shared/crypto/Handshake.js';
 
 export function useRelay() {
   const [status, setStatus] = useState('disconnected');

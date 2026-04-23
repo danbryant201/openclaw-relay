@@ -164,7 +164,7 @@ export default function MemoryEditor() {
           </div>
           
           <div className="p-4 bg-indigo-500/5 rounded-2xl border border-indigo-500/10">
-            <h4 className="text-xs font-semibold text-indigo-300 mb-2">Bridge Info</h4>
+            <h4 className="text-xs font-semibold text-indigo-300 mb-2">Bridge Status</h4>
             <p className="text-[11px] text-slate-400 leading-normal">
               {sharedSecret 
                 ? `Syncing with ${gateways[0]?.id || 'local gateway'}.` 
