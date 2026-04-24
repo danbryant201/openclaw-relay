@@ -20,6 +20,14 @@ export default function Dashboard() {
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [input, setInput] = useState('');
+  
+  const activeGateway = gateways[0] || { id: 'searching...', status: 'offline' };
+  const gatewayId = activeGateway.id;
+  const status = relayStatus === 'connected' && activeGateway.status === 'online' ? 'connected' : relayStatus;
+  
+  const [showPairing, setShowPairing] = useState(false);
+  const [pairingCode, setPairingCode] = useState('Generating...');
+  const [isPairingActive, setIsPairingActive] = useState(false);
 
   useEffect(() => {
     if (sharedSecret && relayStatus === 'connected') {
@@ -83,6 +91,13 @@ export default function Dashboard() {
       text: currentInput
     });
   };
+
+  useEffect(() => {
+      if (showPairing && !isPairingActive && relayStatus === 'connected') {
+          send({ type: 'generate_pairing_code' });
+          setIsPairingActive(true);
+      }
+  }, [showPairing, isPairingActive, relayStatus, send]);
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 overflow-hidden">
