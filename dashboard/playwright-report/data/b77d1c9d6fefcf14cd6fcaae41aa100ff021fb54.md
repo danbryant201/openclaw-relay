@@ -12,29 +12,14 @@
 # Error details
 
 ```
-Error: expect(locator).toBeVisible() failed
-
-Locator: locator('nav').locator('button').first()
-Expected: visible
-Timeout: 5000ms
-Error: element(s) not found
-
-Call log:
-  - Expect "toBeVisible" with timeout 5000ms
-  - waiting for locator('nav').locator('button').first()
-
+Test timeout of 30000ms exceeded while running "beforeEach" hook.
 ```
 
-# Page snapshot
+```
+Error: page.goto: net::ERR_ABORTED; maybe frame was detached?
+Call log:
+  - navigating to "http://localhost:3000/", waiting until "load"
 
-```yaml
-- generic [active] [ref=e1]:
-  - generic [ref=e3]:
-    - heading "404" [level=1] [ref=e4]
-    - heading "This page could not be found." [level=2] [ref=e6]
-  - button "Open Next.js Dev Tools" [ref=e12] [cursor=pointer]:
-    - img [ref=e13]
-  - alert [ref=e16]
 ```
 
 # Test source
@@ -45,7 +30,8 @@ Call log:
   3  | test.describe('Dashboard Chat E2E', () => {
   4  |   test.beforeEach(async ({ page }) => {
   5  |     // Navigate to the local dev server
-  6  |     await page.goto('http://localhost:3000');
+> 6  |     await page.goto('http://localhost:3000');
+     |                ^ Error: page.goto: net::ERR_ABORTED; maybe frame was detached?
   7  |   });
   8  | 
   9  |   test('should allow typing and clicking send', async ({ page }) => {
@@ -79,8 +65,7 @@ Call log:
   37 |     // Wait for the sidebar to contain at least one thread button
   38 |     // This assumes the bridge is running locally or mocked
   39 |     const threads = page.locator('nav >> button');
-> 40 |     await expect(threads.first()).toBeVisible();
-     |                                   ^ Error: expect(locator).toBeVisible() failed
+  40 |     await expect(threads.first()).toBeVisible();
   41 |   });
   42 | });
   43 | 
