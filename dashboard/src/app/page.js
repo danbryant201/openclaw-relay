@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal, Send, Settings, User, Layout, MessageSquare, Shield, Activity, Plus, QrCode, Menu, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { clsx } from 'clsx';
@@ -22,7 +22,7 @@ export default function Dashboard() {
   const [input, setInput] = useState('');
   
   // Guard for undefined gateways
-  const activeGateway = (gateways && gateways[0]) || { id: 'searching...', status: 'offline' };
+  const activeGateway = useMemo(() => (gateways && gateways[0]) || { id: 'searching...', status: 'offline' }, [gateways]);
   const gatewayId = activeGateway.id;
   const status = relayStatus === 'connected' && activeGateway.status === 'online' ? 'connected' : relayStatus;
   
@@ -50,8 +50,8 @@ export default function Dashboard() {
         id: s.threadId,
         name: s.title,
         messages: [],
-        active: s.threadId === activeThreadId
-      })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        updatedAt: s.updatedAt || 0
+      })).sort((a, b) => b.updatedAt - a.updatedAt);
       
       setThreads(formattedThreads);
       if (!activeThreadId && formattedThreads.length > 0) {
@@ -70,7 +70,7 @@ export default function Dashboard() {
     }
   }, [messages, activeThreadId]);
 
-  const activeThread = threads.find(t => t.id === activeThreadId);
+  const activeThread = useMemo(() => threads.find(t => t.id === activeThreadId), [threads, activeThreadId]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
