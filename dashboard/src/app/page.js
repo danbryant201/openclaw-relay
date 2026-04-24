@@ -21,7 +21,6 @@ export default function Dashboard() {
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [input, setInput] = useState('');
   
-  // Guard for undefined gateways
   const activeGateway = useMemo(() => (gateways && gateways[0]) || { id: 'searching...', status: 'offline' }, [gateways]);
   const gatewayId = activeGateway.id;
   const status = relayStatus === 'connected' && activeGateway.status === 'online' ? 'connected' : relayStatus;
@@ -73,24 +72,39 @@ export default function Dashboard() {
   const activeThread = useMemo(() => threads.find(t => t.id === activeThreadId), [threads, activeThreadId]);
 
   const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || !activeThreadId) return;
+    console.log('[Dashboard] sendMessage triggered');
+    if (e) e.preventDefault();
+    if (!input.trim()) {
+      console.log('[Dashboard] Empty input');
+      return;
+    }
+    if (!activeThreadId) {
+      console.log('[Dashboard] No active thread selected');
+      return;
+    }
 
-    const userMsg = { role: 'user', text: input, timestamp: new Date().toLocaleTimeString() };
+    const currentInput = input;
+    const currentThreadId = activeThreadId;
+
+    const userMsg = { role: 'user', text: currentInput, timestamp: new Date().toLocaleTimeString() };
     setThreads(prev => prev.map(t => {
-      if (t.id === activeThreadId) return { ...t, messages: [...t.messages, userMsg] };
+      if (t.id === currentThreadId) return { ...t, messages: [...t.messages, userMsg] };
       return t;
     }));
     
-    const currentInput = input;
     setInput('');
 
-    // Send to Bridge
-    await sendEncrypted({
-      action: 'send_command',
-      threadId: activeThreadId,
-      text: currentInput
-    });
+    console.log('[Dashboard] Sending encrypted command:', currentInput);
+    try {
+      await sendEncrypted({
+        action: 'send_command',
+        threadId: currentThreadId,
+        text: currentInput
+      });
+      console.log('[Dashboard] Command sent successfully');
+    } catch (err) {
+      console.error('[Dashboard] Failed to send command:', err);
+    }
   };
 
   useEffect(() => {
