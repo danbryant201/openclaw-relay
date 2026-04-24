@@ -13,6 +13,8 @@ const GATEWAY_ID = process.env.GATEWAY_ID || 'dan-nucbox';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || path.resolve(__dirname, '../../');
 const RECONNECT_INTERVAL = 5000;
 const IDENTITY_FILE = path.resolve(__dirname, './identity.json');
+const SESSIONS_PATH = 'C:/Users/Admin/.openclaw/agents/main/sessions/sessions.json';
+const TITLES_PATH = 'C:/Users/Admin/.openclaw/agents/main/titles.json';
 
 let ws;
 let reconnectTimer;
@@ -20,9 +22,6 @@ let myEphemeral;
 let sharedSecret;
 let myIdentity;
 let memoryAgent;
-
-const SESSIONS_PATH = 'C:/Users/Admin/.openclaw/agents/main/sessions/sessions.json';
-const TITLES_PATH = 'C:/Users/Admin/.openclaw/agents/main/titles.json';
 
 // Initialize Memory Agent
 memoryAgent = new MemoryAgent(null, WORKSPACE_PATH);
@@ -161,7 +160,6 @@ function setupWs(socket, id, isPairing = false) {
                     const payload = JSON.parse(decrypted.toString());
                     console.log(`[Bridge] Handled request: ${payload.action}`);
 
-                    // Logic for Logs, Memory, etc.
                     let result = { type: 'error', message: 'Not implemented' };
                     
                     if (payload.action === 'start_logs') {
@@ -172,12 +170,15 @@ function setupWs(socket, id, isPairing = false) {
                         const { threadId, text } = payload;
                         console.log(`[Bridge] Executing command in thread ${threadId}: ${text}`);
                         
-                        // Execute via OpenClaw CLI
                         const { execSync } = require('child_process');
                         try {
-                            const output = execSync(`openclaw chat send --session "${threadId}" "${text.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+                            const output = execSync(`openclaw chat send --session "${threadId}" "${text.replace(/"/g, '\\"')}"`, { 
+                                encoding: 'utf8',
+                                shell: 'powershell.exe'
+                            });
                             result = { type: 'command_result', threadId, output };
                         } catch (err) {
+                            console.error(`[Bridge] CLI execution failed:`, err.message);
                             result = { type: 'error', message: `CLI Error: ${err.message}`, output: err.stdout || err.stderr };
                         }
                     } else {
