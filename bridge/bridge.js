@@ -21,9 +21,41 @@ let sharedSecret;
 let myIdentity;
 let memoryAgent;
 
+const SESSIONS_PATH = 'C:/Users/Admin/.openclaw/agents/main/sessions/sessions.json';
+const TITLES_PATH = 'C:/Users/Admin/.openclaw/agents/main/titles.json';
+
 // Initialize Memory Agent
 memoryAgent = new MemoryAgent(null, WORKSPACE_PATH);
 console.log(`[Bridge] Memory Agent active for: ${WORKSPACE_PATH}`);
+
+function loadTitles() {
+    if (!fs.existsSync(TITLES_PATH)) return {};
+    try {
+        return JSON.parse(fs.readFileSync(TITLES_PATH, 'utf8'));
+    } catch (e) {
+        console.error('[Bridge] Failed to load titles:', e.message);
+        return {};
+    }
+}
+
+function loadSessions() {
+    if (!fs.existsSync(SESSIONS_PATH)) return [];
+    try {
+        const data = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
+        const titles = loadTitles();
+        
+        return Object.entries(data).map(([threadId, meta]) => ({
+            threadId,
+            sessionId: meta.sessionId,
+            updatedAt: meta.updatedAt,
+            origin: meta.origin,
+            title: titles[meta.sessionId] || meta.sessionId.substring(0, 8)
+        }));
+    } catch (e) {
+        console.error('[Bridge] Failed to load sessions:', e.message);
+        return [];
+    }
+}
 
 // Load or generate identity
 if (fs.existsSync(IDENTITY_FILE)) {
@@ -134,6 +166,20 @@ function setupWs(socket, id, isPairing = false) {
                     
                     if (payload.action === 'start_logs') {
                         result = { type: 'log_entry', message: 'Bridge log stream started.', level: 'info' };
+                    } else if (payload.action === 'list_sessions') {
+                        result = { type: 'session_list', sessions: loadSessions() };
+                    } else if (payload.action === 'send_command') {
+                        const { threadId, text } = payload;
+                        console.log(`[Bridge] Executing command in thread ${threadId}: ${text}`);
+                        
+                        // Execute via OpenClaw CLI
+                        const { execSync } = require('child_process');
+                        try {
+                            const output = execSync(`openclaw chat send --session "${threadId}" "${text.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+                            result = { type: 'command_result', threadId, output };
+                        } catch (err) {
+                            result = { type: 'error', message: `CLI Error: ${err.message}`, output: err.stdout || err.stderr };
+                        }
                     } else {
                         result = await memoryAgent.handleRequest(payload);
                     }

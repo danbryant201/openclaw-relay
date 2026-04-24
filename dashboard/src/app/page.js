@@ -14,30 +14,18 @@ function cn(...inputs) {
 }
 
 export default function Dashboard() {
-  const { status: relayStatus, gateways, lastError, messages, sendEncrypted, send } = useRelay();
+  const { status: relayStatus, gateways, lastError, messages, sendEncrypted, send, sharedSecret } = useRelay();
   const [view, setView] = useState('chat'); // chat, memory, logs
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [threads, setThreads] = useState([
-    { id: 'main', name: 'Main Session', messages: [], active: true },
-    { id: 'coding', name: 'Codex-JS', messages: [], active: false },
-  ]);
-  const [activeThreadId, setActiveThreadId] = useState('main');
+  const [threads, setThreads] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState(null);
   const [input, setInput] = useState('');
-  
-  const activeGateway = gateways[0] || { id: 'searching...', status: 'offline' };
-  const gatewayId = activeGateway.id;
-  const status = relayStatus === 'connected' && activeGateway.status === 'online' ? 'connected' : relayStatus;
-  
-  const [showPairing, setShowPairing] = useState(false);
-  const [pairingCode, setPairingCode] = useState('Generating...');
-  const [isPairingActive, setIsPairingActive] = useState(false);
 
   useEffect(() => {
-      if (showPairing && !isPairingActive && relayStatus === 'connected') {
-          send({ type: 'generate_pairing_code' });
-          setIsPairingActive(true);
-      }
-  }, [showPairing, isPairingActive, relayStatus, send]);
+    if (sharedSecret && relayStatus === 'connected') {
+      sendEncrypted({ action: 'list_sessions' });
+    }
+  }, [sharedSecret, relayStatus, sendEncrypted]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -48,33 +36,52 @@ export default function Dashboard() {
     } else if (lastMsg.type === 'pairing_complete') {
       setShowPairing(false);
       setIsPairingActive(false);
-    }
-  }, [messages]);
-
-  const activeThread = threads.find(t => t.id === activeThreadId);
-
-  const sendMessage = (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-
-    const newMessage = { role: 'user', text: input, timestamp: new Date().toLocaleTimeString() };
-    setThreads(prev => prev.map(t => {
-      if (t.id === activeThreadId) return { ...t, messages: [...t.messages, newMessage] };
-      return t;
-    }));
-    setInput('');
-
-    setTimeout(() => {
-      const aiMessage = { 
+    } else if (lastMsg.type === 'session_list') {
+      const formattedThreads = lastMsg.sessions.map(s => ({
+        id: s.threadId,
+        name: s.title,
+        messages: [],
+        active: s.threadId === activeThreadId
+      })).sort((a, b) => b.updatedAt - a.updatedAt);
+      
+      setThreads(formattedThreads);
+      if (!activeThreadId && formattedThreads.length > 0) {
+        setActiveThreadId(formattedThreads[0].id);
+      }
+    } else if (lastMsg.type === 'command_result') {
+      const aiMsg = { 
         role: 'ai', 
-        text: `Relay received: "${input}". (Alpha Mock Response)`, 
+        text: lastMsg.output, 
         timestamp: new Date().toLocaleTimeString() 
       };
       setThreads(prev => prev.map(t => {
-        if (t.id === activeThreadId) return { ...t, messages: [...t.messages, aiMessage] };
+        if (t.id === lastMsg.threadId) return { ...t, messages: [...t.messages, aiMsg] };
         return t;
       }));
-    }, 1000);
+    }
+  }, [messages, activeThreadId]);
+
+  const activeThread = threads.find(t => t.id === activeThreadId);
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || !activeThreadId) return;
+
+    const userMsg = { role: 'user', text: input, timestamp: new Date().toLocaleTimeString() };
+    setThreads(prev => prev.map(t => {
+      if (t.id === activeThreadId) return { ...t, messages: [...t.messages, userMsg] };
+      return t;
+    }));
+    
+    const currentInput = input;
+    setInput('');
+
+    // Send to Bridge
+    await sendEncrypted({
+      action: 'send_command',
+      threadId: activeThreadId,
+      text: currentInput
+    });
   };
 
   return (
