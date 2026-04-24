@@ -21,7 +21,8 @@ export default function Dashboard() {
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [input, setInput] = useState('');
   
-  const activeGateway = gateways[0] || { id: 'searching...', status: 'offline' };
+  // Guard for undefined gateways
+  const activeGateway = (gateways && gateways[0]) || { id: 'searching...', status: 'offline' };
   const gatewayId = activeGateway.id;
   const status = relayStatus === 'connected' && activeGateway.status === 'online' ? 'connected' : relayStatus;
   
@@ -36,7 +37,7 @@ export default function Dashboard() {
   }, [sharedSecret, relayStatus, sendEncrypted]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (!messages || messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
     
     if (lastMsg.type === 'pairing_code_generated') {
@@ -50,7 +51,7 @@ export default function Dashboard() {
         name: s.title,
         messages: [],
         active: s.threadId === activeThreadId
-      })).sort((a, b) => b.updatedAt - a.updatedAt);
+      })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       
       setThreads(formattedThreads);
       if (!activeThreadId && formattedThreads.length > 0) {
@@ -126,7 +127,7 @@ export default function Dashboard() {
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          {threads.map(thread => (
+          {threads && threads.map(thread => (
             <button
               key={thread.id}
               onClick={() => { setActiveThreadId(thread.id); setView('chat'); setIsSidebarOpen(false); }}
@@ -230,7 +231,7 @@ export default function Dashboard() {
               </div>
             </header>
             <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
-              {activeThread?.messages.length === 0 ? (
+              {(!activeThread || !activeThread.messages || activeThread.messages.length === 0) ? (
                 <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
                   <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-800"><Terminal className="w-8 h-8 text-indigo-500" /></div>
                   <div>
