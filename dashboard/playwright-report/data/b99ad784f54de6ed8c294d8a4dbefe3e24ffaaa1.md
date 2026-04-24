@@ -12,11 +12,7 @@
 # Error details
 
 ```
-Test timeout of 30000ms exceeded while running "beforeEach" hook.
-```
-
-```
-Error: page.goto: net::ERR_ABORTED; maybe frame was detached?
+Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/
 Call log:
   - navigating to "http://localhost:3000/", waiting until "load"
 
@@ -31,7 +27,7 @@ Call log:
   4  |   test.beforeEach(async ({ page }) => {
   5  |     // Navigate to the local dev server
 > 6  |     await page.goto('http://localhost:3000');
-     |                ^ Error: page.goto: net::ERR_ABORTED; maybe frame was detached?
+     |                ^ Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/
   7  |   });
   8  | 
   9  |   test('should allow typing and clicking send', async ({ page }) => {

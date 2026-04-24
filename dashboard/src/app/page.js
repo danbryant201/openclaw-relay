@@ -31,6 +31,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (sharedSecret && relayStatus === 'connected') {
+      console.log('[Dashboard] E2EE Tunnel ready, fetching sessions...');
       sendEncrypted({ action: 'list_sessions' });
     }
   }, [sharedSecret, relayStatus, sendEncrypted]);
@@ -45,6 +46,7 @@ export default function Dashboard() {
       setShowPairing(false);
       setIsPairingActive(false);
     } else if (lastMsg.type === 'session_list') {
+      console.log('[Dashboard] Received session list:', lastMsg.sessions.length);
       const formattedThreads = lastMsg.sessions.map(s => ({
         id: s.threadId,
         name: s.title,
@@ -57,6 +59,7 @@ export default function Dashboard() {
         setActiveThreadId(formattedThreads[0].id);
       }
     } else if (lastMsg.type === 'command_result') {
+      console.log('[Dashboard] Received command result for:', lastMsg.threadId);
       const aiMsg = { 
         role: 'ai', 
         text: lastMsg.output, 
@@ -72,18 +75,15 @@ export default function Dashboard() {
   const activeThread = useMemo(() => threads.find(t => t.id === activeThreadId), [threads, activeThreadId]);
 
   const sendMessage = async (e) => {
-    console.log('[Dashboard] sendMessage triggered');
+    console.log('[Dashboard] sendMessage attempt');
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
       e.stopPropagation();
     }
     
-    if (!input.trim()) {
-      console.log('[Dashboard] Empty input');
-      return;
-    }
+    if (!input.trim()) return;
     if (!activeThreadId) {
-      console.log('[Dashboard] No active thread selected');
+      console.warn('[Dashboard] No active thread selected, message dropped.');
       return;
     }
 
@@ -98,16 +98,16 @@ export default function Dashboard() {
     
     setInput('');
 
-    console.log('[Dashboard] Sending encrypted command:', currentInput);
+    console.log('[Dashboard] Dispatching encrypted command...');
     try {
       await sendEncrypted({
         action: 'send_command',
         threadId: currentThreadId,
         text: currentInput
       });
-      console.log('[Dashboard] Command sent successfully');
+      console.log('[Dashboard] Dispatch complete.');
     } catch (err) {
-      console.error('[Dashboard] Failed to send command:', err);
+      console.error('[Dashboard] Dispatch failed:', err);
     }
   };
 
@@ -150,12 +150,12 @@ export default function Dashboard() {
               key={thread.id}
               onClick={() => { setActiveThreadId(thread.id); setView('chat'); setIsSidebarOpen(false); }}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group",
+                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left",
                 activeThreadId === thread.id && view === 'chat' ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent"
               )}
             >
-              <MessageSquare className={cn("w-4 h-4", activeThreadId === thread.id && view === 'chat' ? "text-indigo-400" : "text-slate-500")} />
-              <span className="text-sm font-medium">{thread.name}</span>
+              <MessageSquare className={cn("w-4 h-4 shrink-0", activeThreadId === thread.id && view === 'chat' ? "text-indigo-400" : "text-slate-500")} />
+              <span className="text-sm font-medium truncate">{thread.name}</span>
             </button>
           ))}
           
@@ -167,7 +167,7 @@ export default function Dashboard() {
               view === 'memory' ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" : "text-slate-400 hover:bg-slate-800"
             )}
           >
-            <Layout className="w-4 h-4" />
+            <Layout className="w-4 h-4 shrink-0" />
             <span className="text-sm font-medium">Memory Editor</span>
           </button>
           <button 
@@ -177,7 +177,7 @@ export default function Dashboard() {
                 view === 'logs' ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" : "text-slate-400 hover:bg-slate-800"
             )}
           >
-            <Activity className="w-4 h-4" />
+            <Activity className="w-4 h-4 shrink-0" />
             <span className="text-sm font-medium">Logs</span>
           </button>
         </nav>
@@ -238,7 +238,7 @@ export default function Dashboard() {
             <header className="h-16 border-b border-slate-800 flex items-center justify-between px-4 sm:px-8 bg-slate-950/50 backdrop-blur-md z-10">
               <div className="flex items-center gap-4">
                 <button className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white" onClick={() => setIsSidebarOpen(true)}><Menu className="w-5 h-5" /></button>
-                <h2 className="font-semibold text-slate-100 truncate max-w-[150px] sm:max-w-none">{activeThread?.name}</h2>
+                <h2 className="font-semibold text-slate-100 truncate max-w-[150px] sm:max-w-none">{activeThread?.name || 'OpenClaw Chat'}</h2>
                 <div className="hidden sm:block px-2 py-0.5 bg-slate-800 rounded text-[10px] font-mono text-slate-400 uppercase tracking-widest border border-slate-700">E2EE</div>
               </div>
               <div className="flex items-center gap-4">
@@ -269,7 +269,10 @@ export default function Dashboard() {
             </div>
             <div className="p-4 sm:p-8 pt-0">
               <form 
-                onSubmit={sendMessage}
+                onSubmit={(e) => {
+                  console.log('[Dashboard] Form submit');
+                  sendMessage(e);
+                }}
                 className="relative max-w-4xl mx-auto"
               >
                 <input 
@@ -277,7 +280,8 @@ export default function Dashboard() {
                   value={input} 
                   onChange={(e) => setInput(e.target.value)} 
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      console.log('[Dashboard] Enter key down');
                       sendMessage(e);
                     }
                   }}
@@ -285,15 +289,18 @@ export default function Dashboard() {
                   className="w-full bg-slate-900/50 border border-slate-800 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 outline-none rounded-2xl px-5 sm:px-6 py-3 sm:py-4 pr-14 sm:pr-16 text-sm transition-all placeholder:text-slate-600 backdrop-blur-xl" 
                 />
                 <button 
-                  type="submit" 
-                  onClick={sendMessage}
+                  type="button" 
+                  onClick={(e) => {
+                    console.log('[Dashboard] Button click');
+                    sendMessage(e);
+                  }}
                   disabled={!input.trim() || status !== 'connected'} 
                   className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
                 >
                   <Send className="w-4 h-4 text-white" />
                 </button>
               </form>
-              <p className="text-center text-[9px] text-slate-600 mt-4 uppercase tracking-[0.2em] font-medium">V1.0.0 Alpha &bull; Encrypted Relay</p>
+              <p className="text-center text-[9px] text-slate-600 mt-4 uppercase tracking-[0.2em] font-medium">V1.0.0 Alpha &bull; Encrypted Relay &bull; {activeThreadId ? 'Live' : 'No Thread'}</p>
             </div>
           </>
         )}
