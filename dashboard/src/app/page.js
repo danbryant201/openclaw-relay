@@ -73,7 +73,11 @@ export default function Dashboard() {
 
   const sendMessage = async (e) => {
     console.log('[Dashboard] sendMessage triggered');
-    if (e) e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     if (!input.trim()) {
       console.log('[Dashboard] Empty input');
       return;
@@ -264,9 +268,25 @@ export default function Dashboard() {
               )}
             </div>
             <div className="p-4 sm:p-8 pt-0">
-              <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto">
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Send command..." className="w-full bg-slate-900/50 border border-slate-800 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 outline-none rounded-2xl px-5 sm:px-6 py-3 sm:py-4 pr-14 sm:pr-16 text-sm transition-all placeholder:text-slate-600 backdrop-blur-xl" />
-                <button type="submit" disabled={!input.trim() || status !== 'connected'} className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 rounded-xl transition-all shadow-lg shadow-indigo-500/20"><Send className="w-4 h-4 text-white" /></button>
+              <form 
+                onSubmit={sendMessage}
+                className="relative max-w-4xl mx-auto"
+              >
+                <input 
+                  type="text" 
+                  value={input} 
+                  onChange={(e) => setInput(e.target.value)} 
+                  placeholder="Send command..." 
+                  className="w-full bg-slate-900/50 border border-slate-800 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 outline-none rounded-2xl px-5 sm:px-6 py-3 sm:py-4 pr-14 sm:pr-16 text-sm transition-all placeholder:text-slate-600 backdrop-blur-xl" 
+                />
+                <button 
+                  type="submit" 
+                  onClick={sendMessage}
+                  disabled={!input.trim() || status !== 'connected'} 
+                  className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </button>
               </form>
               <p className="text-center text-[9px] text-slate-600 mt-4 uppercase tracking-[0.2em] font-medium">V1.0.0 Alpha &bull; Encrypted Relay</p>
             </div>
