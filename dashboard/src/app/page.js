@@ -74,8 +74,8 @@ export default function Dashboard() {
   const sendMessage = async (e) => {
     console.log('[Dashboard] sendMessage triggered');
     if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
     }
     
     if (!input.trim()) {
@@ -269,7 +269,10 @@ export default function Dashboard() {
             </div>
             <div className="p-4 sm:p-8 pt-0">
               <form 
-                onSubmit={sendMessage}
+                onSubmit={(e) => {
+                  console.log('[Dashboard] Form onSubmit');
+                  sendMessage(e);
+                }}
                 className="relative max-w-4xl mx-auto"
               >
                 <input 
@@ -280,8 +283,11 @@ export default function Dashboard() {
                   className="w-full bg-slate-900/50 border border-slate-800 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 outline-none rounded-2xl px-5 sm:px-6 py-3 sm:py-4 pr-14 sm:pr-16 text-sm transition-all placeholder:text-slate-600 backdrop-blur-xl" 
                 />
                 <button 
-                  type="submit" 
-                  onClick={sendMessage}
+                  type="button" 
+                  onClick={(e) => {
+                    console.log('[Dashboard] Button onClick');
+                    sendMessage(e);
+                  }}
                   disabled={!input.trim() || status !== 'connected'} 
                   className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
                 >
