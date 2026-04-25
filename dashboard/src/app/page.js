@@ -300,7 +300,7 @@ export default function Dashboard() {
                   <Send className="w-4 h-4 text-white" />
                 </button>
               </form>
-              <p className="text-center text-[9px] text-slate-600 mt-4 uppercase tracking-[0.2em] font-medium">V1.0.0 Alpha &bull; Encrypted Relay &bull; {activeThreadId ? 'Live' : 'No Thread'}</p>
+              <p className="text-center text-[9px] text-slate-600 mt-4 uppercase tracking-[0.2em] font-medium">V1.1.0 Alpha &bull; Encrypted Relay &bull; {activeThreadId ? 'Live' : 'No Thread'}</p>
             </div>
           </>
         )}
