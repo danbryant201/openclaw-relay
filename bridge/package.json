@@ -4,7 +4,8 @@
   "main": "bridge.js",
   "scripts": {
     "start": "node bridge.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:local": "cross-env RELAY_URL=ws://localhost:8080 node bridge.js",
+    "test": "node --test sessions.test.js memory-agent.test.js"
   },
   "keywords": [],
   "author": "",
@@ -12,5 +13,8 @@
   "description": "Local bridge for openclaw-relay",
   "dependencies": {
     "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
   }
 }

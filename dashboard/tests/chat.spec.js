@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Dashboard Chat E2E', () => {
   test('component should render and handle input', async ({ page }) => {
     // 1. Visit the app
-    await page.goto('http://localhost:3000');
+    await page.goto('/dashboard');
     
     // 2. Wait for loading to finish (indicated by 'OpenClaw' text)
     await expect(page.getByText('OpenClaw', { exact: true })).toBeVisible({ timeout: 15000 });

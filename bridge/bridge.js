@@ -3,6 +3,7 @@ const { Handshake } = require('../shared/crypto/Handshake.js');
 const fs = require('fs');
 const path = require('path');
 const MemoryAgent = require('./memory-agent.js');
+const { loadSessions, loadTitles, lookupSessionId } = require('./sessions.js');
 
 /**
  * OpenClaw Relay Bridge (Alpha)
@@ -27,34 +28,6 @@ let memoryAgent;
 memoryAgent = new MemoryAgent(null, WORKSPACE_PATH);
 console.log(`[Bridge] Memory Agent active for: ${WORKSPACE_PATH}`);
 
-function loadTitles() {
-    if (!fs.existsSync(TITLES_PATH)) return {};
-    try {
-        return JSON.parse(fs.readFileSync(TITLES_PATH, 'utf8'));
-    } catch (e) {
-        console.error('[Bridge] Failed to load titles:', e.message);
-        return {};
-    }
-}
-
-function loadSessions() {
-    if (!fs.existsSync(SESSIONS_PATH)) return [];
-    try {
-        const data = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
-        const titles = loadTitles();
-        
-        return Object.entries(data).map(([threadId, meta]) => ({
-            threadId,
-            sessionId: meta.sessionId,
-            updatedAt: meta.updatedAt,
-            origin: meta.origin,
-            title: titles[meta.sessionId] || meta.sessionId.substring(0, 8)
-        }));
-    } catch (e) {
-        console.error('[Bridge] Failed to load sessions:', e.message);
-        return [];
-    }
-}
 
 // Load or generate identity
 if (fs.existsSync(IDENTITY_FILE)) {
@@ -165,21 +138,24 @@ function setupWs(socket, id, isPairing = false) {
                     if (payload.action === 'start_logs') {
                         result = { type: 'log_entry', message: 'Bridge log stream started.', level: 'info' };
                     } else if (payload.action === 'list_sessions') {
-                        result = { type: 'session_list', sessions: loadSessions() };
+                        result = { type: 'session_list', sessions: loadSessions(SESSIONS_PATH, TITLES_PATH) };
                     } else if (payload.action === 'send_command') {
                         const { threadId, text } = payload;
-                        console.log(`[Bridge] Executing command in thread ${threadId}: ${text}`);
-                        
+                        const sessionId = lookupSessionId(SESSIONS_PATH, threadId);
+                        console.log(`[Bridge] Executing command in thread ${threadId} (session ${sessionId}): ${text}`);
+
                         const { execSync } = require('child_process');
                         try {
-                            const output = execSync(`openclaw chat send --session "${threadId}" "${text.replace(/"/g, '\\"')}"`, { 
+                            if (!sessionId) throw new Error(`No session ID found for thread: ${threadId}`);
+                            const output = execSync(`openclaw agent --session-id "${sessionId}" --message "${text.replace(/"/g, '\\"')}"`, {
                                 encoding: 'utf8',
-                                shell: 'powershell.exe'
+                                shell: 'powershell.exe',
+                                timeout: 60000
                             });
                             result = { type: 'command_result', threadId, output };
                         } catch (err) {
                             console.error(`[Bridge] CLI execution failed:`, err.message);
-                            result = { type: 'error', message: `CLI Error: ${err.message}`, output: err.stdout || err.stderr };
+                            result = { type: 'command_result', threadId, output: `CLI Error: ${err.message}` };
                         }
                     } else {
                         result = await memoryAgent.handleRequest(payload);

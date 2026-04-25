@@ -25,10 +25,10 @@ const Handshake = {
     const fullBuffer = new Uint8Array(encrypted);
     const ciphertext = fullBuffer.slice(0, -16);
     const tag = fullBuffer.slice(-16);
-    return { 
-      ciphertext: Buffer.from(ciphertext), 
-      iv: Buffer.from(iv), 
-      tag: Buffer.from(tag) 
+    return {
+      ciphertext: Buffer.from(ciphertext),
+      iv: Buffer.from(iv),
+      tag: Buffer.from(tag)
     };
   },
 
@@ -39,7 +39,7 @@ const Handshake = {
     const fullCiphertext = new Uint8Array(ciphertext.length + tag.length);
     fullCiphertext.set(new Uint8Array(ciphertext), 0);
     fullCiphertext.set(new Uint8Array(tag), ciphertext.length);
-    
+
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv }, cryptoKey, fullCiphertext
     );
@@ -49,13 +49,20 @@ const Handshake = {
 
 export function useRelay() {
   const [status, setStatus] = useState('disconnected');
-  const [gateways, setGateways] = useState([]);
   const [lastError, setLastError] = useState(null);
   const [sharedSecret, setSharedSecret] = useState(null);
-  const [messages, setMessages] = useState([]); 
+  const [messages, setMessages] = useState([]);
   const ws = useRef(null);
   const ephemeral = useRef(null);
-  const GATEWAY_ID = 'dan-nucbox'; // Fixed for alpha
+  // Ref mirrors the sharedSecret state so onmessage always reads the live
+  // value without needing sharedSecret in connect's dependency array.
+  const sharedSecretRef = useRef(null);
+  const GATEWAY_ID = 'dan-nucbox';
+
+  const setSecret = useCallback((secret) => {
+    sharedSecretRef.current = secret;
+    setSharedSecret(secret);
+  }, []);
 
   const connect = useCallback(() => {
     const url = process.env.NEXT_PUBLIC_RELAY_URL;
@@ -66,39 +73,31 @@ export function useRelay() {
     }
 
     setStatus('connecting');
-    
+
     try {
-      // Connect as a consumer for our specific gateway
       const wsUrl = `${url}?type=consumer&id=${GATEWAY_ID}`;
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
         setStatus('connected');
         setLastError(null);
-        // Relay handles notifying the provider that we're here
       };
 
       ws.current.onmessage = async (event) => {
         try {
-          const data = JSON.parse(event.data);
-          
+          const text = event.data instanceof Blob ? await event.data.text() : event.data;
+          const data = JSON.parse(text);
+
           switch (data.type) {
             case 'consumer_connected':
-              // This shouldn't happen for us (we are the consumer), 
-              // but the relay might broadcast state
               break;
 
             case 'hs_step1':
-              // Bridge initiated handshake
               console.log('[Dashboard] Received handshake step 1 from bridge');
               const bridgePub = Buffer.from(data.pub, 'hex');
               ephemeral.current = Handshake.generateKeyPair();
-              
-              // Derive secret
               const secret = Handshake.deriveSharedSecret(ephemeral.current.privateKey, bridgePub);
-              setSharedSecret(secret);
-              
-              // Respond with Step 2
+              setSecret(secret);
               ws.current.send(JSON.stringify({
                 type: 'hs_step2',
                 pub: Buffer.from(ephemeral.current.publicKey).toString('hex')
@@ -107,15 +106,13 @@ export function useRelay() {
 
             case 'hs_step3':
               console.log('[Dashboard] Handshake complete. Bridge verified.');
-              // We could verify the signature here if we have the long-term pubkey
-              // For now, the successful derivation of sharedSecret via Noise_XX is our primary path
               break;
 
             case 'encrypted_message':
-              if (!sharedSecret) return;
+              if (!sharedSecretRef.current) return;
               try {
                 const decrypted = await Handshake.decrypt(
-                    sharedSecret,
+                    sharedSecretRef.current,
                     Buffer.from(data.iv, 'hex'),
                     Buffer.from(data.tag, 'hex'),
                     Buffer.from(data.ciphertext, 'hex')
@@ -126,7 +123,7 @@ export function useRelay() {
                   console.error('[Dashboard] Decryption failed', e);
               }
               break;
-            
+
             case 'pairing_initiated':
             case 'pairing_complete':
               setMessages(prev => [...prev, data]);
@@ -139,7 +136,7 @@ export function useRelay() {
 
       ws.current.onclose = () => {
         setStatus('disconnected');
-        setSharedSecret(null);
+        setSecret(null);
         setTimeout(connect, 5000);
       };
 
@@ -151,19 +148,18 @@ export function useRelay() {
       setLastError(e.message);
       setStatus('error');
     }
-  }, [sharedSecret]);
+  }, [setSecret]);
 
   const sendEncrypted = useCallback(async (payload) => {
-    if (!ws.current || !sharedSecret) return;
-    
-    const encrypted = await Handshake.encrypt(sharedSecret, Buffer.from(JSON.stringify(payload)));
+    if (!ws.current || !sharedSecretRef.current) return;
+    const encrypted = await Handshake.encrypt(sharedSecretRef.current, Buffer.from(JSON.stringify(payload)));
     ws.current.send(JSON.stringify({
       type: 'encrypted_message',
       ciphertext: encrypted.ciphertext.toString('hex'),
       iv: encrypted.iv.toString('hex'),
       tag: encrypted.tag.toString('hex')
     }));
-  }, [sharedSecret]);
+  }, []);
 
   const send = useCallback((payload) => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {

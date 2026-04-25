@@ -41,20 +41,21 @@ class MemoryAgent {
     return scan(this.workspacePath);
   }
 
-  async readFile(relativePath) {
+  _assertInsideWorkspace(relativePath) {
+    if (path.isAbsolute(relativePath)) throw new Error('Access denied: path outside workspace');
     const fullPath = path.join(this.workspacePath, relativePath);
-    // Safety check: ensure path is inside workspace
-    if (!fullPath.startsWith(this.workspacePath)) {
-      throw new Error('Access denied: path outside workspace');
-    }
+    const rel = path.relative(this.workspacePath, fullPath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('Access denied: path outside workspace');
+    return fullPath;
+  }
+
+  async readFile(relativePath) {
+    const fullPath = this._assertInsideWorkspace(relativePath);
     return fs.readFileSync(fullPath, 'utf8');
   }
 
   async writeFile(relativePath, content) {
-    const fullPath = path.join(this.workspacePath, relativePath);
-    if (!fullPath.startsWith(this.workspacePath)) {
-      throw new Error('Access denied: path outside workspace');
-    }
+    const fullPath = this._assertInsideWorkspace(relativePath);
     fs.writeFileSync(fullPath, content, 'utf8');
   }
 
