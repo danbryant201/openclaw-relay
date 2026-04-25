@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(node --test pairing.test.js storage.test.js relay.test.js)",
+      "Bash(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000 \")",
+      "Bash(echo \"Dev server PID: $!\")",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(node *)",
+      "Bash(openclaw *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}
